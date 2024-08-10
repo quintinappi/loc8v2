@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, auth, storage } from '../firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, updatePassword } from 'firebase/auth';
 import toast from 'react-hot-toast';
+import Image from 'next/image';
 
 const ProfileImage = ({ profilePic, firstName, lastName }) => {
   if (profilePic) {
-    return <img src={profilePic} alt="Profile" className="w-full h-full rounded-full object-cover" />;
+    return <Image src={profilePic} alt="Profile" width={100} height={100} className="rounded-full object-cover" />;
   }
   
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
@@ -27,15 +28,11 @@ export default function Profile() {
   const [lastName, setLastName] = useState('');
   const [loading, setLoading] = useState(true);
   const [profilePic, setProfilePic] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
 
-  useEffect(() => {
-    if (user) {
-      fetchUserProfile();
-    }
-  }, [user]);
-
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
+      if (!user) return;
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
@@ -49,7 +46,11 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, [fetchUserProfile]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,6 +69,18 @@ export default function Profile() {
       toast.error('Failed to update profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    try {
+      await updatePassword(auth.currentUser, newPassword);
+      toast.success('Password updated successfully');
+      setNewPassword('');
+    } catch (error) {
+      console.error('Error updating password:', error);
+      toast.error('Failed to update password');
     }
   };
 
@@ -149,6 +162,27 @@ export default function Profile() {
           className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
         >
           Update Profile
+        </button>
+      </form>
+
+      <h3 className="text-xl font-bold mt-8 mb-4">Change Password</h3>
+      <form onSubmit={handlePasswordChange} className="space-y-4">
+        <div>
+          <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">New Password</label>
+          <input
+            type="password"
+            id="newPassword"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+        >
+          Change Password
         </button>
       </form>
     </div>

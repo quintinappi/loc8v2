@@ -51,7 +51,7 @@ export default function DashboardStats({ userId }) {
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg mb-4">
-      <h3 className="text-xl font-semibold mb-2 text-white">Today's Stats</h3>
+      <h3 className="text-xl font-semibold mb-2 text-white">Today&apos;s Stats</h3>
       <p className="text-white">Total Hours Worked: {stats.totalHours}</p>
       <p className="text-white">Clock-ins Today: {stats.clockInsToday}</p>
     </div>
