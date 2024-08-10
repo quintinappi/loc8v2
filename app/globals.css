@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 51, 51, 51;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +24,7 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
+  font-family: 'Arial', sans-serif;
 }
 
 @layer utilities {
@@ -31,3 +32,19 @@ body {
     text-wrap: balance;
   }
 }
+
+@layer base {
+  input {
+    @apply text-black;
+  }
+}
+
+.custom-toast {
+  background: rgba(220, 38, 38, 0.9) !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  padding: 16px 24px !important;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+@import 'leaflet/dist/leaflet.css';
