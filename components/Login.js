@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -6,6 +6,39 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isPWA, setIsPWA] = useState(false);
+
+  useEffect(() => {
+    // Check if the app is running as a PWA
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsPWA(true);
+    }
+
+    // Listen for the beforeinstallprompt event
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+        }
+        setDeferredPrompt(null);
+      });
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -48,6 +81,16 @@ export default function Login() {
           Log In
         </button>
       </form>
+      {isPWA ? (
+        <p className="text-green-500 mt-4">This app is running as a PWA</p>
+      ) : (
+        <p className="text-yellow-500 mt-4">This app is not running as a PWA</p>
+      )}
+      {deferredPrompt && (
+        <button onClick={handleInstallClick} className="bg-blue-500 text-white px-4 py-2 rounded mt-4">
+          Install App
+        </button>
+      )}
     </div>
   );
 }

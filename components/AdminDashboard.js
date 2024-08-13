@@ -13,7 +13,12 @@ const AdminDashboard = () => {
     if (!user || !user.isAdmin) return;
 
     const clockInsRef = collection(db, 'clockIns');
-    const q = query(clockInsRef, orderBy('timestamp', 'desc'), limit(20));
+    const q = query(
+      clockInsRef,
+      where('userId', '!=', user.uid),
+      orderBy('timestamp', 'desc'),
+      limit(20)
+    );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const clockInsData = await Promise.all(snapshot.docs.map(async (doc) => {

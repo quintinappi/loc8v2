@@ -1,73 +1,57 @@
-'use client'
-
 import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, getDoc, doc } from 'firebase/firestore';
-import dynamic from 'next/dynamic';
-import 'leaflet/dist/leaflet.css';
-
-const DynamicMap = dynamic(() => import('./Map'), { ssr: false });
-const EmployeeClockings = dynamic(() => import('./EmployeeClockings'), { ssr: false });
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
+import { reverseGeocode } from '../utils/reverseGeocode';
 
 export default function HistoryPageContent() {
-  const { user } = useAuth();
   const [clockIns, setClockIns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('personal');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && user) {
-      // Check if user has admin role
-      const checkAdminStatus = async () => {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        setIsAdmin(userDoc.data()?.role === 'admin');
-      };
-      checkAdminStatus();
+    if (user) {
+      fetchClockIns();
+    }
+  }, [user]);
 
+  async function fetchClockIns() {
+    setLoading(true);
+    try {
       const clockInsRef = collection(db, 'clockIns');
       const q = query(
         clockInsRef,
         where('userId', '==', user.uid),
         orderBy('timestamp', 'desc'),
-        limit(12)
+        limit(20)
       );
 
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
+      const querySnapshot = await getDocs(q);
+      const clockInsData = await Promise.all(querySnapshot.docs.map(async doc => {
+        const data = doc.data();
+        let nearestTown = 'Unknown location';
+        if (data.latitude && data.longitude) {
           try {
-            const clockInsData = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-              timestamp: doc.data().timestamp.toDate()
-            }));
-            setClockIns(clockInsData);
-            setLoading(false);
-          } catch (err) {
-            console.error("Error processing clock-in data:", err);
-            setError("Error loading clock-in history. Please try again later.");
-            setLoading(false);
+            nearestTown = await reverseGeocode(data.latitude, data.longitude);
+          } catch (error) {
+            console.error('Error reverse geocoding:', error);
           }
-        },
-        (err) => {
-          console.error("Error fetching clock-in data:", err);
-          setError("Error loading clock-in history. Please try again later.");
-          setLoading(false);
         }
-      );
-
-      return () => unsubscribe();
+        return {
+          id: doc.id,
+          ...data,
+          timestamp: data.timestamp.toDate(),
+          nearestTown
+        };
+      }));
+      setClockIns(clockInsData);
+    } catch (err) {
+      console.error("Error fetching clock-ins:", err);
+      setError("Failed to load clock-in history.");
+    } finally {
+      setLoading(false);
     }
-  }, [user]);
-
-  if (typeof window === 'undefined') {
-    return null; // Return null on server-side
-  }
-
-  if (!user) {
-    return <p className="text-center mt-8 text-white">Please sign in to view clocking history.</p>;
   }
 
   if (loading) {
@@ -79,31 +63,29 @@ export default function HistoryPageContent() {
   }
 
   return (
-    <div className="mt-4 p-4 bg-gray-800 rounded-lg">
-      <h2 className="text-2xl font-bold mb-4 text-white">Clocking History</h2>
-      <div className="mb-4">
-        <button
-          className={`mr-2 px-4 py-2 rounded ${activeTab === 'personal' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-700'}`}
-          onClick={() => setActiveTab('personal')}
-        >
-          Personal History
-        </button>
-        <button
-          className={`px-4 py-2 rounded ${activeTab === 'employees' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-700'}`}
-          onClick={() => setActiveTab('employees')}
-        >
-          Employee Clockings
-        </button>
+    <div className="mt-4 p-4 bg-gray-800 rounded-lg max-w-4xl mx-auto">
+      <h2 className="text-2xl font-bold mb-4 text-white">Personal Clocking History</h2>
+      <div className="space-y-4">
+        {clockIns.map((clockIn) => (
+          <div key={clockIn.id} className="bg-gray-700 p-4 rounded-lg flex flex-col md:flex-row items-center">
+            <div className="flex-grow mb-4 md:mb-0 md:mr-4">
+              <p className="text-white text-lg font-semibold">
+                {clockIn.timestamp.toLocaleString()} - {clockIn.type}
+              </p>
+              <p className="text-gray-300">{clockIn.nearestTown || 'Unknown location'}</p>
+            </div>
+            <div className="w-full md:w-64 h-48">
+              {clockIn.latitude && clockIn.longitude ? (
+                <DynamicMap clockIn={clockIn} />
+              ) : (
+                <div className="w-full h-full bg-gray-600 flex items-center justify-center text-white">
+                  No location data
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
-      {activeTab === 'personal' ? (
-        <div className="space-y-4">
-          {clockIns.map((clockIn) => (
-            <DynamicMap key={clockIn.id} clockIn={clockIn} />
-          ))}
-        </div>
-      ) : (
-        <EmployeeClockings />
-      )}
     </div>
   );
 }

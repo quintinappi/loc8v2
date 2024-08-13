@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Clocking System
 
-## Getting Started
+## Overview
 
-First, run the development server:
+This project is a clocking system that allows users to clock in and out with their geolocation data. The system saves the following information to Firestore:
+- `latitude`
+- `longitude`
+- `location` (a string combining latitude and longitude)
+- `locationName` (nearest town)
+- `timestamp`
+- `type` (either 'CLOCKED IN' or 'CLOCKED OUT')
+- `userId`
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Components
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Dashboard
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+The `Dashboard` component handles the clocking logic. It fetches the user's geolocation, reverse geocodes it to get the nearest town, and saves the clocking data to Firestore.
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+### ClockInButton
 
-## Learn More
+The `ClockInButton` component triggers the clocking action. The actual clocking logic is handled in the `Dashboard` component to avoid duplication and confusion.
 
-To learn more about Next.js, take a look at the following resources:
+### ClockInHistory
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The `ClockInHistory` component displays the recent clocking data for the user.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+## Utilities
 
-## Deploy on Vercel
+### reverseGeocode
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The `reverseGeocode` function takes latitude and longitude as input and returns the nearest town using the OpenStreetMap Nominatim API.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+## How to Use
+
+1. Ensure you have the necessary Firebase configuration in `firebase.js`.
+2. Ensure your Firestore rules allow authenticated users to write to the `clockIns` collection.
+3. Use the `ClockInButton` component to trigger clocking actions.
+4. Use the `ClockInHistory` component to display recent clocking data.
+
+## Troubleshooting
+
+- Ensure the browser has permission to access geolocation.
+- Check the console for any errors that might indicate why the data is not being saved correctly.
+- Ensure your Firestore rules allow writing to the `clockIns` collection.
+
+## Future Updates
+
+- Ensure any changes to the clocking logic are made in the `Dashboard` component to avoid duplication.
+- Update the `reverseGeocode` function if a more accurate geocoding service is required.
+
+## Contact
+
+For any issues or questions, please contact the project maintainer.

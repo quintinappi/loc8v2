@@ -12,6 +12,7 @@
     "@react-firebase/auth": "^0.2.10",
     "@react-firebase/database": "^0.3.11",
     "firebase": "^10.12.5",
+    "framer-motion": "^11.3.24",
     "leaflet": "^1.9.4",
     "next": "14.2.5",
     "react": "^18",

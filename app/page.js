@@ -9,8 +9,13 @@ export default function Home() {
   const { user } = useAuth();
 
   return (
-    <div>
-      {user ? <Dashboard /> : <Login />}
+    <div className="bg-gray-100 min-h-screen">
+      <header className="bg-red-600 text-white p-4">
+        <h1 className="text-2xl font-bold">Clocking System</h1>
+      </header>
+      <main className="container mx-auto p-4">
+        {user ? <Dashboard /> : <Login />}
+      </main>
     </div>
   );
 }
