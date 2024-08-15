@@ -6,17 +6,32 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import toast from 'react-hot-toast';
+import { toast } from 'react-toastify';
 import Image from 'next/image';
+import 'react-toastify/dist/ReactToastify.css';
 
 const ProfileImage = ({ profilePic, firstName, lastName }) => {
   if (profilePic) {
-    return <Image src={profilePic} alt="Profile" width={100} height={100} className="rounded-full object-cover" />;
+    return (
+      <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
+        <Image 
+          src={profilePic} 
+          alt="Profile" 
+          width={96} 
+          height={96} 
+          className="object-cover w-full h-full"
+          onError={(e) => {
+            e.target.onerror = null; 
+            e.target.src = "https://via.placeholder.com/96?text=Error"; 
+          }}
+        />
+      </div>
+    );
   }
   
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   return (
-    <div className="w-full h-full rounded-full bg-gray-600 flex items-center justify-center text-white text-2xl font-bold">
+    <div className="w-24 h-24 rounded-full bg-blue-500 flex items-center justify-center text-white text-2xl font-bold border-2 border-gray-300">
       {initials}
     </div>
   );
@@ -24,221 +39,148 @@ const ProfileImage = ({ profilePic, firstName, lastName }) => {
 
 export default function Profile() {
   const { user, setUser } = useAuth();
-  const [profile, setProfile] = useState({
-    firstName: '',
-    lastName: '',
-    photoURL: '',
-  });
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [profilePic, setProfilePic] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      console.log('User data:', user);
-      setProfile({
-        firstName: user.firstName || '',
-        lastName: user.lastName || '',
-        photoURL: user.photoURL || '',
-      });
-    }
+    const fetchUserData = async () => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setFirstName(userData.firstName || '');
+            setLastName(userData.lastName || '');
+            setProfilePic(userData.photoURL || null);  // Changed from profilePic to photoURL
+            console.log("Fetched profile pic:", userData.photoURL); // Debug log
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          toast.error("Failed to load profile data");
+        }
+      }
+    };
+
+    fetchUserData();
   }, [user]);
 
-  async function updateUserProfile(profileData, file) {
-    const auth = getAuth();
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      console.error('No authenticated user found');
-      throw new Error('No authenticated user found');
-    }
-
-    try {
-      let photoURL = profileData.photoURL;
-
-      if (file) {
-        const storageRef = ref(storage, `profile_pictures/${currentUser.uid}`);
-        const uploadResult = await uploadBytes(storageRef, file);
-        console.log('File uploaded:', uploadResult);
-        photoURL = await getDownloadURL(storageRef);
-        console.log('Download URL:', photoURL);
-      }
-
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userDocRef, {
-        firstName: profileData.firstName,
-        lastName: profileData.lastName,
-        photoURL,
+  useEffect(() => {
+    if (user && (!firstName || !lastName || !profilePic)) {
+      toast.error('Please complete your profile details and add a profile picture.', {
+        position: "top-center",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
       });
-      console.log('Firestore document updated');
-
-      await firebaseUpdateProfile(currentUser, {
-        displayName: `${profileData.firstName} ${profileData.lastName}`,
-        photoURL,
-      });
-      console.log('Firebase Auth profile updated');
-
-      if (typeof setUser === 'function') {
-        setUser({
-          ...currentUser,
-          firstName: profileData.firstName,
-          lastName: profileData.lastName,
-          photoURL,
-        });
-        console.log('User context updated');
-      } else {
-        console.warn('setUser is not a function. User context not updated.');
-      }
-
-      return { success: true, photoURL };
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      return { success: false, error: error.message };
     }
-  }
+  }, [user, firstName, lastName, profilePic]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      console.log('Updating profile with:', profile);
-      const result = await updateUserProfile(profile);
-      if (result.success) {
-        toast.success('Profile updated successfully');
-        console.log('Profile updated:', result);
-      } else {
-        toast.error(`Failed to update profile: ${result.error}`);
-        console.error('Failed to update profile:', result.error);
-      }
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      toast.error(`Failed to update profile: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleProfilePicChange(event) {
-    const file = event.target.files[0];
+  const handleProfilePicChange = async (e) => {
+    const file = e.target.files[0];
     if (file) {
       setLoading(true);
-      try {
-        const result = await updateUserProfile(profile, file);
-        if (result.success) {
-          toast.success('Profile picture updated successfully');
-          setProfile(prev => ({ ...prev, photoURL: result.photoURL }));
-        } else {
-          toast.error(`Failed to update profile picture: ${result.error}`);
-        }
-      } catch (error) {
-        console.error('Error updating profile picture:', error);
-        toast.error(`Failed to update profile picture: ${error.message}`);
-      } finally {
-        setLoading(false);
-      }
+      const storageRef = ref(storage, `profilePics/${user.uid}`);
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      setProfilePic(downloadURL);
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });  // Changed from profilePic to photoURL
+      setLoading(false);
+      toast.success('Profile picture updated successfully');
     }
-  }
+  };
 
-  async function handlePasswordChange(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const auth = getAuth();
-    const user = auth.currentUser;
 
     try {
-      console.log('Updating password');
-      await updatePassword(user, newPassword);
-      toast.success('Password updated successfully');
-      setNewPassword('');
-      console.log('Password updated successfully');
+      await updateDoc(doc(db, 'users', user.uid), { firstName, lastName });
+      await firebaseUpdateProfile(getAuth().currentUser, { displayName: `${firstName} ${lastName}` });
+
+      if (newPassword) {
+        await updatePassword(getAuth().currentUser, newPassword);
+      }
+
+      setUser({ ...user, displayName: `${firstName} ${lastName}` });
+      toast.success('Profile updated successfully');
     } catch (error) {
-      console.error('Error updating password:', error);
-      toast.error(`Failed to update password: ${error.message}`);
+      console.error('Error updating profile:', error);
+      toast.error('Failed to update profile');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   if (loading) return <p className="text-center mt-8 text-white">Loading...</p>;
 
   return (
-    <div className="max-w-md mx-auto mt-8 p-6 bg-gray-800 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4 text-white">Update Profile</h2>
-      <div className="mb-4">
-        <div className="w-32 h-32 mx-auto mb-4 relative rounded-full overflow-hidden">
-          {profile.photoURL ? (
-            <Image src={profile.photoURL} alt="Profile" layout="fill" objectFit="cover" />
-          ) : (
-            <div className="w-full h-full bg-gray-600 flex items-center justify-center text-white text-2xl font-bold">
-              {profile.firstName && profile.lastName ? `${profile.firstName[0]}${profile.lastName[0]}` : '?'}
-            </div>
-          )}
-          <label htmlFor="profile-pic-upload" className="absolute bottom-0 right-0 bg-red-600 text-white p-2 rounded-full cursor-pointer">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0118.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-xl">
+      <h2 className="text-2xl font-bold mb-6">Profile</h2>
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4 flex justify-center">
+          <ProfileImage profilePic={profilePic} firstName={firstName} lastName={lastName} />
+        </div>
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="profilePic">
+            Profile Picture
           </label>
           <input
-            id="profile-pic-upload"
             type="file"
+            id="profilePic"
             accept="image/*"
             onChange={handleProfilePicChange}
-            className="hidden"
+            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
         </div>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="firstName" className="block text-sm font-medium text-gray-300">First Name</label>
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="firstName">
+            First Name
+          </label>
           <input
             type="text"
             id="firstName"
-            value={profile.firstName}
-            onChange={(e) => setProfile(prev => ({ ...prev, firstName: e.target.value }))}
-            className="mt-1 block w-full rounded-md border-gray-600 shadow-sm focus:border-red-300 focus:ring focus:ring-red-200 focus:ring-opacity-50 bg-gray-700 text-white"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md"
             required
           />
         </div>
-        <div>
-          <label htmlFor="lastName" className="block text-sm font-medium text-gray-300">Last Name</label>
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="lastName">
+            Last Name
+          </label>
           <input
             type="text"
             id="lastName"
-            value={profile.lastName}
-            onChange={(e) => setProfile(prev => ({ ...prev, lastName: e.target.value }))}
-            className="mt-1 block w-full rounded-md border-gray-600 shadow-sm focus:border-red-300 focus:ring focus:ring-red-200 focus:ring-opacity-50 bg-gray-700 text-white"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md"
             required
           />
         </div>
-        <button
-          type="submit"
-          className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-          disabled={loading}
-        >
-          {loading ? 'Updating...' : 'Update Profile'}
-        </button>
-      </form>
-
-      <h3 className="text-xl font-bold mt-8 mb-4">Change Password</h3>
-      <form onSubmit={handlePasswordChange} className="space-y-4">
-        <div>
-          <label htmlFor="newPassword" className="block text-sm font-medium text-gray-300">New Password</label>
+        <div className="mb-6">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="newPassword">
+            New Password (leave blank to keep current)
+          </label>
           <input
             type="password"
             id="newPassword"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-700 text-white"
-            required
-            autoComplete="new-password"
+            className="w-full px-3 py-2 border rounded-md"
           />
         </div>
         <button
           type="submit"
-          className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 disabled:bg-gray-400"
           disabled={loading}
         >
-          {loading ? 'Updating...' : 'Change Password'}
+          {loading ? 'Updating...' : 'Update Profile'}
         </button>
       </form>
     </div>

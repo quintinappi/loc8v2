@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { reverseGeocode } from '../utils/reverseGeocode';
+import dynamic from 'next/dynamic';
+
+const DynamicMap = dynamic(() => import('./Map'), {
+  ssr: false
+});
 
 export default function HistoryPageContent() {
   const [clockIns, setClockIns] = useState([]);
@@ -10,13 +15,7 @@ export default function HistoryPageContent() {
   const [error, setError] = useState(null);
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      fetchClockIns();
-    }
-  }, [user]);
-
-  async function fetchClockIns() {
+  const fetchClockIns = useCallback(async () => {
     setLoading(true);
     try {
       const clockInsRef = collection(db, 'clockIns');
@@ -52,7 +51,13 @@ export default function HistoryPageContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchClockIns();
+    }
+  }, [user, fetchClockIns]);
 
   if (loading) {
     return <p className="text-center mt-8 text-white">Loading clock-in history...</p>;

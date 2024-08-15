@@ -18,7 +18,7 @@ export default function Map({ clockIn }) {
   const position = [clockIn.latitude, clockIn.longitude];
 
   return (
-    <div className="w-full h-full">
+    <div className="map-container w-full h-full">
       <MapContainer center={position} zoom={13} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

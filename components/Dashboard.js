@@ -1,233 +1,216 @@
-import { useState, useEffect, useRef } from 'react';
-import { addClocking, getUnsynced } from '../app/utils/indexedDB';
-import { clockInOut } from '@/app/utils/firebaseUtils';
-import toast from 'react-hot-toast';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../firebase';
-import { addDoc, collection, serverTimestamp, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
-import { reverseGeocode } from '../utils/reverseGeocode';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { getClockingData } from '../app/utils/api';
+import { db } from '../firebase';
+import { collection, addDoc, query, where, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { reverseGeocode } from '../utils/reverseGeocode';
+import { ToastContainer, toast } from 'react-toastify';
+import Image from 'next/image';
+import 'react-toastify/dist/ReactToastify.css';
+
+const ProfileImage = ({ profilePic, firstName, lastName }) => {
+  if (profilePic) {
+    return (
+      <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
+        <Image 
+          src={profilePic} 
+          alt="Profile" 
+          width={96} 
+          height={96} 
+          className="object-cover w-full h-full"
+          onError={(e) => {
+            e.target.onerror = null; 
+            e.target.src = "https://via.placeholder.com/96?text=Error"; 
+          }}
+        />
+      </div>
+    );
+  }
+  
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  return (
+    <div className="w-24 h-24 rounded-full bg-blue-500 flex items-center justify-center text-white text-2xl font-bold border-2 border-gray-300">
+      {initials}
+    </div>
+  );
+};
 
 export default function Dashboard() {
   const [status, setStatus] = useState('CLOCKED OUT');
   const [lastAction, setLastAction] = useState(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [hoursToday, setHoursToday] = useState(0);
   const [hoursThisWeek, setHoursThisWeek] = useState(0);
   const [hoursLastMonth, setHoursLastMonth] = useState(0);
+  const [loading, setLoading] = useState(false);
   const { user } = useAuth();
-  const [profileIncomplete, setProfileIncomplete] = useState(false);
-  const toastShownRef = useRef(false);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    fetchLatestClockIn();
-    calculateHours();
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [user]);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [profilePic, setProfilePic] = useState(null);
 
   useEffect(() => {
     if (user) {
-      checkUserProfile();
+      // Fetch user data
+      const fetchUserData = async () => {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setFirstName(userData.firstName || '');
+          setLastName(userData.lastName || '');
+          setProfilePic(userData.photoURL || null);
+          setStatus(userData.clockingStatus || 'CLOCKED OUT');
+        }
+      };
+      fetchUserData();
+
+      // Fetch clocking data
+      getClockingData(user.uid).then(data => {
+        setLastAction(data.lastAction);
+        setHoursToday(data.hoursToday);
+        setHoursThisWeek(data.hoursThisWeek);
+        setHoursLastMonth(data.hoursLastMonth);
+      }).catch(error => {
+        console.error('Error fetching clocking data:', error);
+      });
+
+      // Calculate hours worked
+      calculateHoursWorked(user.uid);
     }
-    return () => {
-      toastShownRef.current = false; // Reset when component unmounts
-    };
   }, [user]);
 
-  async function checkUserProfile() {
+  const handleClockInOut = async () => {
     if (!user) return;
 
-    const userDocRef = doc(db, 'users', user.uid);
-    const userDoc = await getDoc(userDocRef);
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      if (!userData.firstName || !userData.lastName) {
-        setProfileIncomplete(true);
-        if (!toastShownRef.current) {
-          toast.error('Please complete your profile details', {
-            duration: 5000,
-            action: {
-              label: 'Go to Profile',
-              onClick: () => {
-                window.location.href = '/profile';
-              }
-            }
-          });
-          toastShownRef.current = true;
-        }
-      }
-    }
-  }
-
-  async function fetchLatestClockIn() {
-    if (!user) return;
-
-    const q = query(
-      collection(db, 'clockIns'),
-      where('userId', '==', user.uid),
-      orderBy('timestamp', 'desc'),
-      limit(1)
-    );
-
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const latestClockIn = querySnapshot.docs[0].data();
-      setStatus(latestClockIn.type === 'in' ? 'CLOCKED IN' : 'CLOCKED OUT');
-      setLastAction(latestClockIn.timestamp.toDate());
-    }
-  }
-
-  async function calculateHours() {
-    if (!user) return;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay());
-
-    const monthStart = new Date(today);
-    monthStart.setDate(1);
-
-    const q = query(
-      collection(db, 'clockIns'),
-      where('userId', '==', user.uid),
-      orderBy('timestamp', 'asc')
-    );
-
-    const querySnapshot = await getDocs(q);
-    let totalMillisecondsToday = 0;
-    let totalMillisecondsThisWeek = 0;
-    let totalMillisecondsLastMonth = 0;
-    let lastClockIn = null;
-
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      const timestamp = data.timestamp.toDate();
-
-      if (data.type === 'in') {
-        lastClockIn = timestamp;
-      } else if (data.type === 'out' && lastClockIn) {
-        const duration = timestamp - lastClockIn;
-        if (timestamp >= today) {
-          totalMillisecondsToday += duration;
-        }
-        if (timestamp >= weekStart) {
-          totalMillisecondsThisWeek += duration;
-        }
-        if (timestamp >= monthStart) {
-          totalMillisecondsLastMonth += duration;
-        }
-        lastClockIn = null;
-      }
-    });
-
-    setHoursToday((totalMillisecondsToday / (1000 * 60 * 60)).toFixed(2));
-    setHoursThisWeek((totalMillisecondsThisWeek / (1000 * 60 * 60)).toFixed(2));
-    setHoursLastMonth((totalMillisecondsLastMonth / (1000 * 60 * 60)).toFixed(2));
-  }
-
-  async function handleClockInOut() {
-    if (!user) return;
-
+    setLoading(true);
+    const clockInsRef = collection(db, 'clockIns');
+    const now = new Date();
     const newStatus = status === 'CLOCKED OUT' ? 'CLOCKED IN' : 'CLOCKED OUT';
-    const type = newStatus === 'CLOCKED IN' ? 'in' : 'out';
 
-    try {
-      console.log('Attempting to clock', type);
-
-      const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject);
-      });
-
+    // Get the user's current location
+    navigator.geolocation.getCurrentPosition(async (position) => {
       const { latitude, longitude } = position.coords;
-      let locationName = 'Unknown location';
+      const location = `${latitude}, ${longitude}`;
+      const locationName = await reverseGeocode(latitude, longitude);
 
       try {
-        locationName = await reverseGeocode(latitude, longitude);
-      } catch (error) {
-        console.error('Error reverse geocoding:', error);
-      }
+        await addDoc(clockInsRef, {
+          userId: user.uid,
+          type: newStatus,
+          timestamp: now,
+          latitude,
+          longitude,
+          location,
+          locationName,
+        });
 
-      const docRef = await addDoc(collection(db, 'clockIns'), {
-        userId: user.uid,
-        type: type,
-        timestamp: serverTimestamp(),
-        latitude: latitude,
-        longitude: longitude,
-        location: `${latitude}, ${longitude}`,
-        locationName: locationName
+        // Update user's document with the latest status
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, { clockingStatus: newStatus });
+
+        setStatus(newStatus);
+        setLastAction(now.toISOString());
+
+        // Show toast notification
+        toast.success(`Successfully ${newStatus === 'CLOCKED IN' ? 'clocked in' : 'clocked out'} at ${locationName}`);
+
+        // Recalculate hours worked
+        calculateHoursWorked(user.uid);
+      } catch (error) {
+        console.error('Error clocking in/out:', error);
+        toast.error('Error clocking in/out');
+      } finally {
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error('Error getting location:', error);
+      toast.error('Error getting location');
+      setLoading(false);
+    });
+  };
+
+  const calculateHoursWorked = async (userId) => {
+    const clockInsRef = collection(db, 'clockIns');
+    const q = query(clockInsRef, where('userId', '==', userId), orderBy('timestamp', 'asc'));
+
+    try {
+      const querySnapshot = await getDocs(q);
+      let totalMillisecondsToday = 0;
+      let totalMillisecondsThisWeek = 0;
+      let totalMillisecondsLastMonth = 0;
+      let lastClockIn = null;
+
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const timestamp = data.timestamp.toDate();
+
+        if (data.type === 'CLOCKED IN') {
+          lastClockIn = timestamp;
+        } else if (data.type === 'CLOCKED OUT' && lastClockIn) {
+          const duration = timestamp - lastClockIn;
+
+          if (timestamp >= startOfToday) {
+            totalMillisecondsToday += duration;
+          }
+          if (timestamp >= startOfWeek) {
+            totalMillisecondsThisWeek += duration;
+          }
+          if (timestamp >= startOfLastMonth && timestamp <= endOfLastMonth) {
+            totalMillisecondsLastMonth += duration;
+          }
+
+          lastClockIn = null;
+        }
       });
 
-      console.log('Successfully clocked', type, 'Document ID:', docRef.id);
-      setStatus(newStatus);
-      setLastAction(new Date());
-      toast.success(`Successfully clocked ${type} from ${locationName}`);
-      fetchLatestClockIn(); // Refresh the latest clock-in after a new entry
+      setHoursToday((totalMillisecondsToday / (1000 * 60 * 60)).toFixed(2));
+      setHoursThisWeek((totalMillisecondsThisWeek / (1000 * 60 * 60)).toFixed(2));
+      setHoursLastMonth((totalMillisecondsLastMonth / (1000 * 60 * 60)).toFixed(2));
     } catch (error) {
-      console.error('Error during clocking:', error);
-      toast.error(`Failed to clock ${type}: ${error.message}`);
+      console.error('Error calculating hours worked:', error);
     }
-  }
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="p-6 max-w-md mx-auto bg-white rounded-xl shadow-md space-y-4"
-    >
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <motion.div className="space-y-2" layout>
-        <p className="text-lg font-semibold text-gray-700">Current Status: <span className="font-bold text-blue-600">{status}</span></p>
-        <p className="text-gray-600">Last Action: {lastAction ? lastAction.toLocaleString() : 'None'}</p>
-      </motion.div>
-      <motion.div className="space-y-2" layout>
-        <p className="text-gray-700">Hours worked today: <span className="font-semibold">{hoursToday}</span></p>
-        <p className="text-gray-700">Hours worked this week: <span className="font-semibold">{hoursThisWeek}</span></p>
-        <p className="text-gray-700">Hours worked last month: <span className="font-semibold">{hoursLastMonth}</span></p>
-      </motion.div>
+    <div className={`bg-white rounded-lg shadow-md p-6 max-w-md mx-auto mt-10 ${loading ? 'opacity-50' : ''}`}>
+      {/* Welcome section */}
+      <div className="flex items-center mb-6 pb-4 border-b">
+        <ProfileImage profilePic={profilePic} firstName={firstName} lastName={lastName} />
+        <div className="ml-4">
+          <h2 className="text-xl font-bold text-black">Welcome, {firstName} {lastName}</h2>
+          <p className="text-gray-600">{user?.email}</p>
+        </div>
+      </div>
+
+      <h1 className="text-2xl font-bold mb-4 text-black">Dashboard</h1>
+      <div className="space-y-2">
+        <p className="text-lg text-black">
+          Current Status: <span className="font-bold text-blue-600">{status}</span>
+        </p>
+        <p className="text-black">Last Action: {lastAction ? new Date(lastAction).toLocaleString() : 'N/A'}</p>
+        <p className="text-black">Hours worked today: {hoursToday}</p>
+        <p className="text-black">Hours worked this week: {hoursThisWeek}</p>
+        <p className="text-black">Hours worked last month: {hoursLastMonth}</p>
+      </div>
       <motion.button 
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
+        className="w-full bg-blue-500 text-white py-2 rounded-md mt-4 hover:bg-blue-600"
         onClick={handleClockInOut}
-        className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        disabled={loading}
       >
         {status === 'CLOCKED OUT' ? 'Clock In' : 'Clock Out'}
       </motion.button>
-      {!isOnline && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-red-500 text-sm"
-        >
-          You are offline. Clocking will sync when online.
-        </motion.p>
-      )}
-      <motion.div className="text-center" whileHover={{ scale: 1.05 }}>
-        <Link href="/history" className="text-blue-500 hover:text-blue-700">
-          View Clocking History
-        </Link>
-      </motion.div>
-      {profileIncomplete && (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert">
-          <p className="font-bold">Profile Incomplete</p>
-          <p>Please complete your profile details.</p>
-          <Link href="/profile" className="text-blue-500 hover:underline">
-            Go to Profile
-          </Link>
-        </div>
-      )}
-    </motion.div>
+      <Link href="/history" className="block text-center text-blue-500 mt-4 hover:underline">
+        View Clocking History
+      </Link>
+      <ToastContainer />
+    </div>
   );
 }

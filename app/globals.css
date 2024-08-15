@@ -48,3 +48,15 @@ body {
 }
 
 @import 'leaflet/dist/leaflet.css';
+
+.map-container {
+  z-index: 1;
+}
+
+.navbar {
+  z-index: 1000;
+}
+
+.navbar-menu {
+  z-index: 1001;
+}

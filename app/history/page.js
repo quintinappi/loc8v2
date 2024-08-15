@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, orderBy, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,18 +10,20 @@ const MapWithNoSSR = dynamic(() => import('../../components/Map'), {
   ssr: false
 });
 
-export default function History() {
+const DynamicHistoryPage = dynamic(() => Promise.resolve(HistoryPage), {
+  ssr: false,
+})
+
+export default function Page() {
+  return <DynamicHistoryPage />
+}
+
+function HistoryPage() {
   const [entries, setEntries] = useState([]);
   const [activeTab, setActiveTab] = useState('personal');
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      fetchEntries();
-    }
-  }, [user, activeTab]);
-
-  async function fetchEntries() {
+  const fetchEntries = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -78,11 +80,17 @@ export default function History() {
     } catch (error) {
       console.error('Error fetching clock entries:', error);
     }
-  }
+  }, [user, activeTab]);
+
+  useEffect(() => {
+    if (user) {
+      fetchEntries();
+    }
+  }, [user, activeTab, fetchEntries]);
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Clock History</h1>
+      <h1 className="text-2xl font-bold mb-4 text-black">Clock History</h1>
       <div className="mb-4">
         <button
           className={`mr-2 ${activeTab === 'personal' ? 'bg-blue-500 text-white' : 'bg-gray-200'} px-4 py-2 rounded`}

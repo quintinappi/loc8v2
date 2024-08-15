@@ -1,43 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react';
-import { getAuth } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
+import AdminDashboard from '@/components/AdminDashboard';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
-export default function History() {
-  const [entries, setEntries] = useState([]);
+export default function AdminPage() {
   const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    async function fetchEntries() {
-      if (!user) return;
-
-      try {
-        const q = query(collection(db, 'clockEntries'), where('userId', '==', user.uid));
-        const querySnapshot = await getDocs(q);
-        const fetchedEntries = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setEntries(fetchedEntries);
-      } catch (error) {
-        console.error('Error fetching clock entries:', error);
-      }
+    if (user && !user.isAdmin) {
+      router.push('/dashboard');
     }
+  }, [user, router]);
 
-    fetchEntries();
-  }, [user]);
+  if (!user || !user.isAdmin) {
+    return <div>Access Denied</div>;
+  }
 
-  return (
-    <div>
-      <h1>Clock History</h1>
-      {entries.map(entry => (
-        <div key={entry.id}>
-          <p>{entry.timestamp?.toDate().toString()}: {entry.type}</p>
-        </div>
-      ))}
-    </div>
-  );
+  return <AdminDashboard />;
 }

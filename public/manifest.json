@@ -1,6 +1,11 @@
 {
-  "name": "Clocking System",
-  "short_name": "Clocking",
+  "name": "Clocking System PWA",
+  "short_name": "ClockingPWA",
+  "description": "A Progressive Web App for clocking in and out",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "/icon-192x192.png",
@@ -10,23 +15,6 @@
     {
       "src": "/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
-    }
-  ],
-  "theme_color": "#FFFFFF",
-  "background_color": "#FFFFFF",
-  "start_url": "/",
-  "display": "standalone",
-  "orientation": "portrait",
-  "screenshots": [
-    {
-      "src": "/screenshot1.png",
-      "sizes": "1280x720",
-      "type": "image/png"
-    },
-    {
-      "src": "/screenshot2.png",
-      "sizes": "1280x720",
       "type": "image/png"
     }
   ]
